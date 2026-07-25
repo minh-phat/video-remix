@@ -1,0 +1,166 @@
+generator client {
+  provider        = "prisma-client"
+  output          = "../generated/prisma"
+  moduleFormat    = "cjs"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  extensions = [vector]
+}
+
+model User {
+  id               String      @id @default(cuid())
+  email            String      @unique
+  passwordHash     String
+  refreshTokenHash String?
+  projects         Project[]
+  characters       Character[]
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+}
+
+enum ProjectStatus {
+  DRAFT
+  ANALYZING
+  READY_FOR_REVIEW
+  RENDERING
+  DONE
+}
+
+model Project {
+  id         String           @id @default(cuid())
+  userId     String
+  user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title      String
+  status     ProjectStatus    @default(DRAFT)
+  pages      ComicPage[]
+  renderJobs VideoRenderJob[]
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+
+  @@index([userId])
+}
+
+enum RenderStatus {
+  QUEUED
+  RENDERING
+  DONE
+  FAILED
+}
+
+model VideoRenderJob {
+  id           String       @id @default(cuid())
+  projectId    String
+  project      Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  status       RenderStatus @default(QUEUED)
+  progress     Int          @default(0)
+  outputKey    String?
+  errorMessage String?
+  startedAt    DateTime?
+  completedAt  DateTime?
+  createdAt    DateTime     @default(now())
+
+  @@index([projectId])
+}
+
+enum PageStatus {
+  UPLOADED
+  ANALYZING
+  ANALYZED
+  ERROR
+}
+
+model ComicPage {
+  id            String                @id @default(cuid())
+  projectId     String
+  project       Project               @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  imageKey      String
+  order         Int
+  width         Int?
+  height        Int?
+  status        PageStatus            @default(UPLOADED)
+  errorMessage  String?
+  appearances   CharacterAppearance[]
+  dialogueLines DialogueLine[]
+  createdAt     DateTime              @default(now())
+
+  @@index([projectId])
+}
+
+model Character {
+  id            String                    @id @default(cuid())
+  userId        String
+  user          User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name          String
+  description   String?
+  voiceId       String?
+  refImages     CharacterReferenceImage[]
+  appearances   CharacterAppearance[]
+  dialogueLines DialogueLine[]
+  createdAt     DateTime                  @default(now())
+  updatedAt     DateTime                  @updatedAt
+
+  @@index([userId])
+}
+
+model CharacterReferenceImage {
+  id          String                      @id @default(cuid())
+  characterId String
+  character   Character                   @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  imageKey    String
+  embedding   Unsupported("vector(768)")?
+  createdAt   DateTime                    @default(now())
+
+  @@index([characterId])
+}
+
+enum AppearanceSource {
+  VISION_MATCH
+  MANUAL
+}
+
+model CharacterAppearance {
+  id           String                      @id @default(cuid())
+  pageId       String
+  page         ComicPage                   @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  characterId  String?
+  character    Character?                  @relation(fields: [characterId], references: [id], onDelete: SetNull)
+  bbox         Json
+  cropImageKey String
+  embedding    Unsupported("vector(768)")?
+  confidence   Float
+  source       AppearanceSource            @default(VISION_MATCH)
+  createdAt    DateTime                    @default(now())
+
+  @@index([pageId])
+  @@index([characterId])
+}
+
+enum TtsStatus {
+  PENDING
+  QUEUED
+  DONE
+  ERROR
+}
+
+model DialogueLine {
+  id            String     @id @default(cuid())
+  pageId        String
+  page          ComicPage  @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  characterId   String?
+  character     Character? @relation(fields: [characterId], references: [id], onDelete: SetNull)
+  order         Int
+  rawText       String
+  editedText    String
+  bbox          Json?
+  ttsAudioKey   String?
+  ttsDurationMs Int?
+  ttsStatus     TtsStatus  @default(PENDING)
+  ttsError      String?
+  createdAt     DateTime   @default(now())
+
+  @@index([pageId])
+  @@index([characterId])
+}
